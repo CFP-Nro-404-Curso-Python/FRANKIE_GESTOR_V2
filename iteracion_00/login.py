@@ -76,6 +76,7 @@ def validar_ingreso():
     # Prevención de Inyección SQL mediante paso de parámetros (?).
     cursor.execute("SELECT nombres, rol FROM usuarios WHERE usuario=? AND password=?", (usuario_ingresado, password_ingresada))
     resultado = cursor.fetchone()
+    
     conexion.close()
     
     if resultado:
