@@ -22,6 +22,8 @@ def inicializar_seguridad():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS usuarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombres TEXT,
+            apellidos TEXT,
             usuario TEXT UNIQUE,
             password TEXT,
             rol TEXT
@@ -33,8 +35,8 @@ def inicializar_seguridad():
     cursor.execute("SELECT COUNT(*) FROM usuarios")
     if cursor.fetchone()[0] == 0:
         cursor.execute('''
-            INSERT INTO usuarios (usuario, password, rol) 
-            VALUES ('admin', 'admin123', 'Administrador')
+            INSERT INTO usuarios (nombres, apellidos, usuario, password, rol) 
+            VALUES ('David Hernan', 'Bravo', 'admin', 'admin123', 'Administrador')
         ''')
     
     conexion.commit()
@@ -72,14 +74,15 @@ def validar_ingreso():
     cursor = conexion.cursor()
     
     # Prevención de Inyección SQL mediante paso de parámetros (?).
-    cursor.execute("SELECT rol FROM usuarios WHERE usuario=? AND password=?", (usuario_ingresado, password_ingresada))
+    cursor.execute("SELECT nombres, rol FROM usuarios WHERE usuario=? AND password=?", (usuario_ingresado, password_ingresada))
     resultado = cursor.fetchone()
     conexion.close()
     
     if resultado:
-        rol_usuario = resultado[0]
-        messagebox.showinfo("Acceso Concedido", f"Bienvenido/a. Rol: {rol_usuario}")
-        
+        nombres_usuario = resultado[0]
+        rol_usuario = resultado[1]
+        messagebox.showinfo("Acceso Concedido", f"Bienvenido/a, {nombres_usuario}. Rol: {rol_usuario}")
+    
         # Limpieza de seguridad antes de ocultar la ventana.
         caja_usuario.delete(0, tk.END)
         caja_password.delete(0, tk.END)
@@ -91,7 +94,7 @@ def validar_ingreso():
         # Lazy Import del futuro Panel de Control (panel_control).
         from panel_control import PanelControl
         # Le pasamos la ventana raíz y el rol validado para que el Panel de Control aplique las restricciones.
-        PanelControl(ventana, rol_usuario)
+        PanelControl(ventana, rol_usuario, nombres_usuario)
     else:
         intentos_fallidos += 1
         intentos_restantes = 3 - intentos_fallidos
