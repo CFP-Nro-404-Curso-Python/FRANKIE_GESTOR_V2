@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox
 import os
+# Carga un módulo de la biblioteca estándar dedicado a realizar operaciones de alto nivel en archivos y directorios.
 import shutil
 from datetime import datetime
 
