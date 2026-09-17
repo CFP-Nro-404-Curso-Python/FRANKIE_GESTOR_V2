@@ -22,33 +22,39 @@ def hash_password(password: str) -> bytes:
 
 def inicializar_seguridad():
     """Crea la estructura de usuarios e inserta el admin maestro si no existe."""
-    with sqlite3.connect(DB_PATH) as conexion:
-        cursor = conexion.cursor()
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS usuarios (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nombres TEXT,
-                apellidos TEXT,
-                usuario TEXT UNIQUE,
-                password BLOB,
-                rol TEXT
-            )
-        """
-        )
-
-        cursor.execute("SELECT COUNT(*) FROM usuarios")
-        if cursor.fetchone()[0] == 0:
-            # Se guarda la contraseña en binario (bytes) en la columna BLOB
-            admin_pass_bytes = hash_password("admin123")
+    try:
+        with sqlite3.connect(DB_PATH) as conexion:
+            cursor = conexion.cursor()
             cursor.execute(
                 """
-                INSERT INTO usuarios (nombres, apellidos, usuario, password, rol) 
-                VALUES ('David Hernan', 'Bravo', 'admin', ?, 'Administrador')
-            """,
-                (admin_pass_bytes,),
+                CREATE TABLE IF NOT EXISTS usuarios (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombres TEXT,
+                    apellidos TEXT,
+                    usuario TEXT UNIQUE,
+                    password BLOB,
+                    rol TEXT
+                )
+            """
             )
-        conexion.commit()
+
+            cursor.execute("SELECT COUNT(*) FROM usuarios")
+            if cursor.fetchone()[0] == 0:
+                # Se guarda la contraseña en binario (bytes) en la columna BLOB
+                admin_pass_bytes = hash_password("admin123")
+                cursor.execute(
+                    """
+                    INSERT INTO usuarios (nombres, apellidos, usuario, password, rol) 
+                    VALUES ('David Hernan', 'Bravo', 'admin', ?, 'Administrador')
+                """,
+                    (admin_pass_bytes,),
+                )
+            conexion.commit()
+    except Exception as e:
+        messagebox.showerror(
+            "Error de Base de Datos",
+            f"No se pudo inicializar la base de datos:\n{e}",
+        )
 
 
 # =======================================
@@ -103,14 +109,20 @@ class LoginApp:
 
     def autenticar_usuario(self, usuario: str, password_plana: str):
         """Consulta la base de datos comparando los bytes del hash."""
-        password_binaria = hash_password(password_plana)
-        with sqlite3.connect(DB_PATH) as conexion:
-            cursor = conexion.cursor()
-            cursor.execute(
-                "SELECT nombres, rol FROM usuarios WHERE usuario=? AND password=?",
-                (usuario, password_binaria),
+        try:
+            password_binaria = hash_password(password_plana)
+            with sqlite3.connect(DB_PATH) as conexion:
+                cursor = conexion.cursor()
+                cursor.execute(
+                    "SELECT nombres, rol FROM usuarios WHERE usuario=? AND password=?",
+                    (usuario, password_binaria),
+                )
+                return cursor.fetchone()
+        except Exception as e:
+            messagebox.showerror(
+                "Error de Consulta", f"Ocurrió un error al autenticar:\n{e}"
             )
-            return cursor.fetchone()
+            return None
 
     def validar_ingreso(self):
         usuario = self.caja_usuario.get().strip()
@@ -136,14 +148,15 @@ class LoginApp:
             self.limpiar_campos()
             self.root.withdraw()
 
+            # Intentar abrir el Panel de Control
             try:
                 from panel_control import PanelControl
 
                 PanelControl(self.root, rol_usuario, nombres_usuario)
-            except ImportError:
+            except Exception as e:
                 messagebox.showerror(
-                    "Error de Módulo",
-                    "No se encontró el archivo 'panel_control.py'.",
+                    "Error al cargar el Panel",
+                    f"No se pudo abrir 'panel_control.py':\n{e}",
                 )
                 self.root.deiconify()
         else:
