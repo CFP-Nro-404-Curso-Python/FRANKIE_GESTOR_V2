@@ -1,12 +1,12 @@
+import hashlib
+import os
+import sqlite3
+import sys
 import tkinter as tk
 from tkinter import messagebox
-import sqlite3
-import os
-
-
 
 # =======================================
-#  ANCLAJE DE DIRECTORIO Y BASE DE DATOS
+#  CONFIGURACIÓN DE RUTAS Y BASE DE DATOS
 # =======================================
 
 DIRECTORIO_ACTUAL = os.path.dirname(os.path.abspath(__file__))
@@ -14,124 +14,175 @@ CARPETA_DB = os.path.join(DIRECTORIO_ACTUAL, "db")
 os.makedirs(CARPETA_DB, exist_ok=True)
 DB_PATH = os.path.join(CARPETA_DB, "frankie_gestor.db")
 
+
+def hash_password(password: str) -> bytes:
+    """Genera un hash SHA-256 en formato binario (bytes)."""
+    return hashlib.sha256(password.encode("utf-8")).digest()
+
+
 def inicializar_seguridad():
-    conexion = sqlite3.connect(DB_PATH)
-    cursor = conexion.cursor()
-    
-    # DDL: Tabla independiente de usuarios para el RBAC (Role-Based Access Control).
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS usuarios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombres TEXT,
-            apellidos TEXT,
-            usuario TEXT UNIQUE,
-            password TEXT,
-            rol TEXT
+    """Crea la estructura de usuarios e inserta el admin maestro si no existe."""
+    try:
+        with sqlite3.connect(DB_PATH) as conexion:
+            cursor = conexion.cursor()
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS usuarios (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombres TEXT,
+                    apellidos TEXT,
+                    usuario TEXT UNIQUE,
+                    password BLOB,
+                    rol TEXT
+                )
+            """
+            )
+
+            cursor.execute("SELECT COUNT(*) FROM usuarios")
+            if cursor.fetchone()[0] == 0:
+                # Se guarda la contraseña en binario (bytes) en la columna BLOB
+                admin_pass_bytes = hash_password("admin123")
+                cursor.execute(
+                    """
+                    INSERT INTO usuarios (nombres, apellidos, usuario, password, rol) 
+                    VALUES ('David Hernan', 'Bravo', 'admin', ?, 'Administrador')
+                """,
+                    (admin_pass_bytes,),
+                )
+            conexion.commit()
+    except Exception as e:
+        messagebox.showerror(
+            "Error de Base de Datos",
+            f"No se pudo inicializar la base de datos:\n{e}",
         )
-    ''')
-    
-    # Semilla (Seed) del sistema: Si la tabla está vacía, creamos el Administrador maestro.
-    # Es imposible operar el sistema por primera vez sin este paso.
-    cursor.execute("SELECT COUNT(*) FROM usuarios")
-    if cursor.fetchone()[0] == 0:
-        cursor.execute('''
-            INSERT INTO usuarios (nombres, apellidos, usuario, password, rol) 
-            VALUES ('David Hernan', 'Bravo', 'admin', 'admin123', 'Administrador')
-        ''')
-    
-    conexion.commit()
-    conexion.close()
-
-# Ejecutamos la inicialización al arrancar.
-inicializar_seguridad()
 
 
+# =======================================
+#  CLASE DE LA INTERFAZ DE LOGIN (GUI)
+# =======================================
 
-# =====================================
-#  CREACIÓN DE LA VENTANA RAÍZ "LOGIN"
-# =====================================
 
-ventana = tk.Tk()
-ventana.title("FRANKIE GESTOR - ACCESO AL SISTEMA")
-ventana.geometry("400x250")
-ventana.eval('tk::PlaceWindow . center') # Centramos la ventana de login.
-ventana.resizable(False, False)
+class LoginApp:
 
-# Variable global para el control de intentos.
-intentos_fallidos = 0
+    def __init__(self, root: tk.Tk):
+        self.root = root
+        self.root.title("FRANKIE GESTOR - ACCESO AL SISTEMA")
+        self.root.geometry("400x250")
+        self.root.resizable(False, False)
+        self.root.eval("tk::PlaceWindow . center")
 
-def validar_ingreso():
-    global intentos_fallidos
-    
-    usuario_ingresado = caja_usuario.get()
-    password_ingresada = caja_password.get()
-    
-    if not usuario_ingresado or not password_ingresada:
-        messagebox.showwarning("Validación", "Completá todos los campos.")
-        return
-        
-    conexion = sqlite3.connect(DB_PATH)
-    cursor = conexion.cursor()
-    
-    # Prevención de Inyección SQL mediante paso de parámetros (?).
-    cursor.execute("SELECT nombres, rol FROM usuarios WHERE usuario=? AND password=?", (usuario_ingresado, password_ingresada))
-    resultado = cursor.fetchone()
-    
-    conexion.close()
-    
-    if resultado:
-        nombres_usuario = resultado[0]
-        rol_usuario = resultado[1]
-        messagebox.showinfo("Acceso Concedido", f"Bienvenido/a, {nombres_usuario}. Rol: {rol_usuario}")
-    
-        # Limpieza de seguridad antes de ocultar la ventana.
-        caja_usuario.delete(0, tk.END)
-        caja_password.delete(0, tk.END)
-        caja_usuario.focus_set()
-        
-        # Ocultamos la ventana de login, no la destruimos porque es el tk.Tk() principal.
-        ventana.withdraw()
-        
-        # Lazy Import del futuro Panel de Control (panel_control).
-        from panel_control import PanelControl
-        # Le pasamos la ventana raíz y el rol validado para que el Panel de Control aplique las restricciones.
-        PanelControl(ventana, rol_usuario, nombres_usuario)
-    else:
-        intentos_fallidos += 1
-        intentos_restantes = 3 - intentos_fallidos
-        
-        # Vaciamos ambas cajas por seguridad y para forzar el reingreso.
-        caja_usuario.delete(0, tk.END)
-        caja_password.delete(0, tk.END)
-        caja_usuario.focus_set()
-        
-        if intentos_restantes > 0:
-            messagebox.showerror("Error de Autenticación", f"Credenciales incorrectas. Intentos restantes: {intentos_restantes}")
+        self.intentos_fallidos = 0
+        self.max_intentos = 3
+
+        self._crear_widgets()
+
+    def _crear_widgets(self):
+        tk.Label(
+            self.root, text="SISTEMA DE GESTIÓN", font=("Arial", 12, "bold")
+        ).pack(pady=15)
+
+        tk.Label(self.root, text="Usuario:").pack()
+        self.caja_usuario = tk.Entry(self.root, width=30)
+        self.caja_usuario.pack(pady=5)
+        self.caja_usuario.focus_set()
+
+        tk.Label(self.root, text="Contraseña:").pack()
+        self.caja_password = tk.Entry(self.root, width=30, show="*")
+        self.caja_password.pack(pady=5)
+
+        self.boton_ingresar = tk.Button(
+            self.root,
+            text="Ingresar al Sistema",
+            command=self.validar_ingreso,
+            bg="#4CAF50",
+            fg="white",
+            font=("Arial", 10, "bold"),
+        )
+        self.boton_ingresar.pack(pady=20)
+
+        self.root.bind("<Return>", lambda event: self.validar_ingreso())
+
+    def limpiar_campos(self):
+        self.caja_usuario.delete(0, tk.END)
+        self.caja_password.delete(0, tk.END)
+        self.caja_usuario.focus_set()
+
+    def autenticar_usuario(self, usuario: str, password_plana: str):
+        """Consulta la base de datos comparando los bytes del hash."""
+        try:
+            password_binaria = hash_password(password_plana)
+            with sqlite3.connect(DB_PATH) as conexion:
+                cursor = conexion.cursor()
+                cursor.execute(
+                    "SELECT nombres, rol FROM usuarios WHERE usuario=? AND password=?",
+                    (usuario, password_binaria),
+                )
+                return cursor.fetchone()
+        except Exception as e:
+            messagebox.showerror(
+                "Error de Consulta", f"Ocurrió un error al autenticar:\n{e}"
+            )
+            return None
+
+    def validar_ingreso(self):
+        usuario = self.caja_usuario.get().strip()
+        password = self.caja_password.get().strip()
+
+        if not usuario or not password:
+            messagebox.showwarning(
+                "Validación", "Por favor, completá todos los campos."
+            )
+            return
+
+        resultado = self.autenticar_usuario(usuario, password)
+
+        if resultado:
+            nombres_usuario, rol_usuario = resultado
+            self.intentos_fallidos = 0
+
+            messagebox.showinfo(
+                "Acceso Concedido",
+                f"Bienvenido/a, {nombres_usuario}.\nRol: {rol_usuario}",
+            )
+
+            self.limpiar_campos()
+            self.root.withdraw()
+
+            # Intentar abrir el Panel de Control
+            try:
+                from panel_control import PanelControl
+
+                PanelControl(self.root, rol_usuario, nombres_usuario)
+            except Exception as e:
+                messagebox.showerror(
+                    "Error al cargar el Panel",
+                    f"No se pudo abrir 'panel_control.py':\n{e}",
+                )
+                self.root.deiconify()
         else:
-            messagebox.showerror("Bloqueo de Seguridad", "Superaste el límite de intentos fallidos. El sistema se cerrará.")
-            ventana.destroy()
+            self.intentos_fallidos += 1
+            intentos_restantes = self.max_intentos - self.intentos_fallidos
+            self.limpiar_campos()
+
+            if intentos_restantes > 0:
+                messagebox.showerror(
+                    "Error de Autenticación",
+                    f"Credenciales incorrectas.\nIntentos restantes: {intentos_restantes}",
+                )
+            else:
+                messagebox.showerror(
+                    "Bloqueo de Seguridad",
+                    "Superaste el límite de intentos fallidos. El sistema se cerrará.",
+                )
+                self.root.destroy()
 
 
+# =======================================
+#  PUNTO DE ENTRADA PRINCIPAL
+# =======================================
 
-# ===================
-#  INTERFAZ DE LOGIN
-# ===================
-
-tk.Label(ventana, text="SISTEMA DE GESTIÓN", font=("Arial", 12, "bold")).pack(pady=15)
-
-tk.Label(ventana, text="Usuario:").pack()
-caja_usuario = tk.Entry(ventana, width=30)
-caja_usuario.pack(pady=5)
-
-tk.Label(ventana, text="Contraseña:").pack()
-# show="*" enmascara los caracteres tipeados para que no se vean en pantalla.
-caja_password = tk.Entry(ventana, width=30, show="*")
-caja_password.pack(pady=5)
-
-boton_ingresar = tk.Button(ventana, text="Ingresar al Sistema", command=validar_ingreso, bg="#4CAF50", fg="white", font=("Arial", 10, "bold"))
-boton_ingresar.pack(pady=20)
-
-# UX: Permite enviar el formulario presionando la tecla Enter.
-ventana.bind('<Return>', lambda event: validar_ingreso())
-
-ventana.mainloop()
+if __name__ == "__main__":
+    inicializar_seguridad()
+    root = tk.Tk()
+    app = LoginApp(root)
+    root.mainloop()
