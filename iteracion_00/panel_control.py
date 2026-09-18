@@ -1,135 +1,288 @@
+from datetime import datetime
+import os
+import shutil
+import sqlite3
 import tkinter as tk
 from tkinter import messagebox
-import os
-# Carga un módulo de la biblioteca estándar dedicado a realizar operaciones de alto nivel en archivos y directorios.
-import shutil
-from datetime import datetime
-
 
 
 class PanelControl(tk.Toplevel):
+
     def __init__(self, parent, rol_usuario, nombres_usuario):
         super().__init__(parent)
-        
-        self.title(f"PANEL DE CONTROL - {rol_usuario.upper()}")
-        self.geometry("650x550")
+
+        self.parent = parent
+        self.rol_usuario = rol_usuario
+        self.nombres_usuario = nombres_usuario
+
+        # Configuración principal de la ventana
+        self.title(f"PANEL DE CONTROL - {self.rol_usuario.upper()}")
+        self.geometry("650x580")
         self.resizable(False, False)
-        # Aplicamos un color de fondo neutro para resaltar los botones.
         self.configure(bg="#f0f2f5")
 
-        # Al cerrar esta ventana con la "X", cerramos toda la aplicación (mata el root).
-        self.protocol("WM_DELETE_WINDOW", parent.destroy)
+        # Al cerrar con la "X", finalizamos toda la aplicación
+        self.protocol("WM_DELETE_WINDOW", self.parent.destroy)
 
+        # Matriz de Permisos (RBAC)
+        self._evaluar_permisos()
 
+        # Construcción gráfica
+        self._crear_interfaz()
 
-        # ======================================
-        #  RUTINAS DE NAVEGACIÓN (LAZY IMPORTS)
-        # ======================================
+    def _evaluar_permisos(self):
+        """Asigna los estados de los botones según el rol del usuario."""
+        rol = self.rol_usuario
 
-        def abrir_clientes():
-            from clientes import Cliente
-            Cliente(self)
+        self.p_clientes = (
+            tk.NORMAL
+            if rol in ["Administrador", "Gerente", "Empleado - Ventas"]
+            else tk.DISABLED
+        )
+        self.p_facturacion = (
+            tk.NORMAL
+            if rol in ["Administrador", "Gerente", "Empleado - Ventas"]
+            else tk.DISABLED
+        )
 
-        def abrir_empleados():
-            from empleados import Empleado
-            Empleado(self)
+        self.p_proveedores = (
+            tk.NORMAL
+            if rol in ["Administrador", "Gerente", "Empleado - Compras"]
+            else tk.DISABLED
+        )
+        self.p_stock = (
+            tk.NORMAL
+            if rol in ["Administrador", "Gerente", "Empleado - Compras"]
+            else tk.DISABLED
+        )
 
-        def abrir_proveedores():
-            from proveedores import Proveedor
-            Proveedor(self)
+        self.p_empleados = (
+            tk.NORMAL if rol in ["Administrador", "Gerente"] else tk.DISABLED
+        )
+        self.p_usuarios = (
+            tk.NORMAL if rol in ["Administrador", "Gerente"] else tk.DISABLED
+        )
 
-        def abrir_stock():
-            from stock import Stock
-            Stock(self)
+        self.p_root = tk.NORMAL if rol == "Administrador" else tk.DISABLED
 
-        def abrir_facturacion():
-            from facturacion import Facturacion
-            Facturacion(self)
-            
-        def abrir_usuarios():
-            from usuarios import Usuario
-            Usuario(self, rol_usuario)
-            
-        def abrir_consola():
-            from consola import ConsolaSQL
-            ConsolaSQL(self)
-            
-        def generar_backup():
-            try:
-                directorio_actual = os.path.dirname(os.path.abspath(__file__))
-                ruta_db = os.path.join(directorio_actual, "db", "frankie_gestor.db")
-                
-                if not os.path.exists(ruta_db):
-                    messagebox.showerror("Error", "No se encontró la base de datos para respaldar.")
-                    return
-                
-                # Creamos la carpeta de backups si no existe.
-                carpeta_backup = os.path.join(directorio_actual, "backups")
-                os.makedirs(carpeta_backup, exist_ok=True)
-                
-                # Generamos un nombre de archivo con marca de tiempo.
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S") # Patrón de formato de fecha y hora.
-                nombre_backup = f"backup_frankie_{timestamp}.db"
-                ruta_destino = os.path.join(carpeta_backup, nombre_backup)
-                
-                shutil.copy2(ruta_db, ruta_destino)
-                messagebox.showinfo("Backup Exitoso", f"Copia de seguridad guardada como:\n{nombre_backup}")
-            except Exception as e:
-                messagebox.showerror("Error de Backup", f"Fallo al generar la copia: {e}")
+    def _crear_interfaz(self):
+        """Construye las etiquetas, contenedores y grilla de botones."""
+        # Encabezado
+        tk.Label(
+            self,
+            text=f"BIENVENIDO/A, {self.nombres_usuario.upper()}",
+            font=("Arial", 16, "bold"),
+            bg="#f0f2f5",
+            fg="#333333",
+        ).pack(pady=(20, 5))
 
-        def cerrar_sesion():
-            self.destroy()
-            parent.deiconify() # Vuelve a mostrar el login original.
+        tk.Label(
+            self,
+            text=f"Rol Activo: {self.rol_usuario}",
+            font=("Arial", 11, "italic"),
+            bg="#f0f2f5",
+            fg="#666666",
+        ).pack(pady=(0, 20))
 
-
-
-        # ===========================
-        #  MATRIZ DE PERMISOS (RBAC)
-        # ===========================
-
-        # Definimos qué roles tienen acceso normal a cada módulo. Si el rol no está en la lista, queda DISABLED.
-        p_clientes = tk.NORMAL if rol_usuario in ["Administrador", "Gerente", "Empleado - Ventas"] else tk.DISABLED
-        p_facturacion = tk.NORMAL if rol_usuario in ["Administrador", "Gerente", "Empleado - Ventas"] else tk.DISABLED
-        
-        p_proveedores = tk.NORMAL if rol_usuario in ["Administrador", "Gerente", "Empleado - Compras"] else tk.DISABLED
-        p_stock = tk.NORMAL if rol_usuario in ["Administrador", "Gerente", "Empleado - Compras"] else tk.DISABLED
-        
-        p_empleados = tk.NORMAL if rol_usuario in ["Administrador", "Gerente"] else tk.DISABLED
-        p_usuarios = tk.NORMAL if rol_usuario in ["Administrador", "Gerente"] else tk.DISABLED
-        
-        p_root = tk.NORMAL if rol_usuario == "Administrador" else tk.DISABLED
-
-
-
-        # ============================
-        #  INTERFAZ GRÁFICA Y ESTILOS
-        # ============================
-
-        tk.Label(self, text=f"BIENVENIDO/A, {nombres_usuario.upper()}", font=("Arial", 16, "bold"), bg="#f0f2f5", fg="#333333").pack(pady=(20, 5))
-        tk.Label(self, text=f"Rol Activo: {rol_usuario}", font=("Arial", 11, "italic"), bg="#f0f2f5", fg="#666666").pack(pady=(0, 20))
-
-        # Contenedor para la grilla de botones.
+        # Contenedor de botones
         frame_botones = tk.Frame(self, bg="#f0f2f5")
         frame_botones.pack(expand=True)
 
-        # Configuración visual de botones estándar (Azul corporativo).
-        estilo_btn = {"font": ("Arial", 11, "bold"), "bg": "#2196F3", "fg": "white", "width": 20, "height": 2}
-        
-        # Fila 1: Operaciones de Ventas.
-        tk.Button(frame_botones, text="Gestión de Clientes", command=abrir_clientes, state=p_clientes, **estilo_btn).grid(row=0, column=0, padx=15, pady=15)
-        tk.Button(frame_botones, text="Facturación", command=abrir_facturacion, state=p_facturacion, **estilo_btn).grid(row=0, column=1, padx=15, pady=15)
+        # Estilo base
+        base_btn = {"font": ("Arial", 11, "bold"), "width": 20, "height": 2}
 
-        # Fila 2: Operaciones de Compras.
-        tk.Button(frame_botones, text="Gestión de Proveedores", command=abrir_proveedores, state=p_proveedores, **estilo_btn).grid(row=1, column=0, padx=15, pady=15)
-        tk.Button(frame_botones, text="Control de Stock", command=abrir_stock, state=p_stock, **estilo_btn).grid(row=1, column=1, padx=15, pady=15)
+        # Fila 1: Operaciones de Ventas (Azul)
+        self._crear_boton(
+            frame_botones,
+            "Gestión de Clientes",
+            self._abrir_clientes,
+            self.p_clientes,
+            "#2196F3",
+            0,
+            0,
+            base_btn,
+        )
+        self._crear_boton(
+            frame_botones,
+            "Facturación",
+            self._abrir_facturacion,
+            self.p_facturacion,
+            "#2196F3",
+            0,
+            1,
+            base_btn,
+        )
 
-        # Fila 3: Recursos Humanos y Accesos (Tonos anaranjados/violetas para diferenciar).
-        tk.Button(frame_botones, text="Recursos Humanos", command=abrir_empleados, state=p_empleados, font=("Arial", 11, "bold"), bg="#FF9800", fg="white", width=20, height=2).grid(row=2, column=0, padx=15, pady=15)
-        tk.Button(frame_botones, text="Gestión de Usuarios", command=abrir_usuarios, state=p_usuarios, font=("Arial", 11, "bold"), bg="#9C27B0", fg="white", width=20, height=2).grid(row=2, column=1, padx=15, pady=15)
+        # Fila 2: Operaciones de Compras (Azul)
+        self._crear_boton(
+            frame_botones,
+            "Gestión de Proveedores",
+            self._abrir_proveedores,
+            self.p_proveedores,
+            "#2196F3",
+            1,
+            0,
+            base_btn,
+        )
+        self._crear_boton(
+            frame_botones,
+            "Control de Stock",
+            self._abrir_stock,
+            self.p_stock,
+            "#2196F3",
+            1,
+            1,
+            base_btn,
+        )
 
-        # Fila 4: Herramientas ROOT (Tonos oscuros/grises).
-        tk.Button(frame_botones, text="Consola SQL (Auditoría)", command=abrir_consola, state=p_root, font=("Arial", 11, "bold"), bg="#607D8B", fg="white", width=20, height=2).grid(row=3, column=0, padx=15, pady=15)
-        tk.Button(frame_botones, text="Generar Backup DB", command=generar_backup, state=p_root, font=("Arial", 11, "bold"), bg="#37474F", fg="white", width=20, height=2).grid(row=3, column=1, padx=15, pady=15)
+        # Fila 3: Recursos Humanos y Usuarios (Naranja / Violeta)
+        self._crear_boton(
+            frame_botones,
+            "Recursos Humanos",
+            self._abrir_empleados,
+            self.p_empleados,
+            "#FF9800",
+            2,
+            0,
+            base_btn,
+        )
+        self._crear_boton(
+            frame_botones,
+            "Gestión de Usuarios",
+            self._abrir_usuarios,
+            self.p_usuarios,
+            "#9C27B0",
+            2,
+            1,
+            base_btn,
+        )
 
-        # Botón de Cerrar Sesión (Rojo).
-        tk.Button(self, text="Cerrar Sesión", command=cerrar_sesion, font=("Arial", 10, "bold"), bg="#F44336", fg="white", width=15).pack(pady=20)
+        # Fila 4: Herramientas ROOT (Grises)
+        self._crear_boton(
+            frame_botones,
+            "Consola SQL (Auditoría)",
+            self._abrir_consola,
+            self.p_root,
+            "#607D8B",
+            3,
+            0,
+            base_btn,
+        )
+        self._crear_boton(
+            frame_botones,
+            "Generar Backup DB",
+            self._generar_backup,
+            self.p_root,
+            "#37474F",
+            3,
+            1,
+            base_btn,
+        )
+
+        # Botón de Cerrar Sesión (Rojo)
+        tk.Button(
+            self,
+            text="Cerrar Sesión",
+            command=self._cerrar_sesion,
+            font=("Arial", 10, "bold"),
+            bg="#F44336",
+            fg="white",
+            width=15,
+            cursor="hand2",
+        ).pack(pady=20)
+
+    def _crear_boton(
+        self, parent, text, command, state, bg_color, row, col, base_style
+    ):
+        """Helper para empaquetar botones con estado y estilos uniformes."""
+        btn = tk.Button(
+            parent,
+            text=text,
+            command=command,
+            state=state,
+            bg=bg_color,
+            fg="white",
+            disabledforeground="#a1a1a1",
+            cursor="hand2" if state == tk.NORMAL else "arrow",
+            **base_style,
+        )
+        btn.grid(row=row, column=col, padx=15, pady=12)
+        return btn
+
+    # ======================================
+    #  RUTINAS DE NAVEGACIÓN Y ACCIONES
+    # ======================================
+
+    def _abrir_clientes(self):
+        from clientes import Cliente
+
+        Cliente(self)
+
+    def _abrir_empleados(self):
+        from empleados import Empleado
+
+        Empleado(self)
+
+    def _abrir_proveedores(self):
+        from proveedores import Proveedor
+
+        Proveedor(self)
+
+    def _abrir_stock(self):
+        from stock import Stock
+
+        Stock(self)
+
+    def _abrir_facturacion(self):
+        from facturacion import Facturacion
+
+        Facturacion(self)
+
+    def _abrir_usuarios(self):
+        from usuarios import Usuario
+
+        Usuario(self, self.rol_usuario)
+
+    def _abrir_consola(self):
+        from consola import ConsolaSQL
+
+        ConsolaSQL(self)
+
+    def _generar_backup(self):
+        """Realiza un respaldo seguro mediante SQLite Backup API."""
+        try:
+            dir_actual = os.path.dirname(os.path.abspath(__file__))
+            ruta_db = os.path.join(dir_actual, "db", "frankie_gestor.db")
+
+            if not os.path.exists(ruta_db):
+                messagebox.showerror(
+                    "Error", "No se encontró la base de datos original."
+                )
+                return
+
+            carpeta_backup = os.path.join(dir_actual, "backups")
+            os.makedirs(carpeta_backup, exist_ok=True)
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            nombre_backup = f"backup_frankie_{timestamp}.db"
+            ruta_destino = os.path.join(carpeta_backup, nombre_backup)
+
+            # Uso de sqlite3.backup para garantizar consistencia si la DB está en uso
+            with (
+                sqlite3.connect(ruta_db) as origen,
+                sqlite3.connect(ruta_destino) as destino,
+            ):
+                origen.backup(destino)
+
+            messagebox.showinfo(
+                "Backup Exitoso",
+                f"Copia de seguridad consistente generada:\n{nombre_backup}",
+            )
+        except Exception as e:
+            messagebox.showerror(
+                "Error de Backup", f"Fallo al generar la copia: {e}"
+            )
+
+    def _cerrar_sesion(self):
+        self.destroy()
+        self.parent.deiconify()
